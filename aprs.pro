@@ -18,3 +18,7 @@ SOURCES += main.cpp\
 HEADERS  += mainwindow.h
 
 FORMS    += mainwindow.ui
+
+INCLUDEPATH += /usr/include/QtMultimediaKit /usr/include/QtMobility
+
+LIBS += -lQtMultimediaKit

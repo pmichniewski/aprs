@@ -2,6 +2,9 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QGraphicsPixmapItem>
+#include <QTimer>
+#include <QAudioInput>
 
 namespace Ui {
 class MainWindow;
@@ -17,6 +20,16 @@ public:
 	
 private:
 	Ui::MainWindow *ui;
+	QGraphicsPixmapItem *m_waterfallPixmapItem;
+	QGraphicsScene *m_waterfallScene;
+	QImage *m_waterfallImage;
+	QTimer *m_timer;
+	QAudioInput *m_audioInput;
+	QIODevice *m_audioDevice;
+
+public slots:
+	void updatePixmap();
+	void processAudio();
 };
 
 #endif // MAINWINDOW_H
