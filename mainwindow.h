@@ -5,6 +5,8 @@
 #include <QGraphicsPixmapItem>
 #include <QTimer>
 #include <QAudioInput>
+#include <fftw3.h>
+#include <stdint.h>
 
 namespace Ui {
 class MainWindow;
@@ -26,10 +28,17 @@ private:
 	QTimer *m_timer;
 	QAudioInput *m_audioInput;
 	QIODevice *m_audioDevice;
+	QByteArray m_buffer;
+	qint64 m_bufferPos;
+	double *m_fft_in;
+	fftw_complex *m_fft_out;
+	fftw_plan m_fft_plan;
+	QRgb m_magRgb[256];
 
 public slots:
 	void updatePixmap();
-	void processAudio();
+	void audioData();
+	void audioInterval();
 };
 
 #endif // MAINWINDOW_H

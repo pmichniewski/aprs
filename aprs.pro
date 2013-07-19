@@ -21,4 +21,4 @@ FORMS    += mainwindow.ui
 
 INCLUDEPATH += /usr/include/QtMultimediaKit /usr/include/QtMobility
 
-LIBS += -lQtMultimediaKit
+LIBS += -lQtMultimediaKit -lfftw3
