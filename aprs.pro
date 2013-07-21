@@ -19,6 +19,6 @@ HEADERS  += mainwindow.h
 
 FORMS    += mainwindow.ui
 
-INCLUDEPATH += /usr/include/QtMultimediaKit /usr/include/QtMobility
+INCLUDEPATH += /usr/include/QtMultimediaKit /usr/include/QtMobility /usr/include/qt4/QtMultimedia
 
-LIBS += -lQtMultimediaKit -lfftw3
+LIBS += -lQtMultimedia -lfftw3

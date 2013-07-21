@@ -36,12 +36,20 @@ MainWindow::MainWindow(QWidget *parent) :
 
 	QAudioFormat format;
 	format.setSampleRate(48000);
-	format.setChannels(1);
+	format.setChannelCount(1);
 	format.setSampleSize(16);
 	format.setByteOrder(QAudioFormat::LittleEndian);
 	format.setSampleType(QAudioFormat::SignedInt);
 
-	m_audioInput = new QAudioInput(format, this);
+	QAudioFormat preferred = QAudioDeviceInfo::defaultInputDevice().nearestFormat(format);
+	qDebug() << preferred.channelCount() << " " << preferred.sampleRate() << " " << preferred.sampleSize() << " " << preferred.sampleType();
+	qDebug() << "Default device: " << QAudioDeviceInfo::defaultInputDevice().deviceName();
+
+	foreach(QAudioDeviceInfo device, QAudioDeviceInfo::availableDevices(QAudio::AudioInput)) {
+		qDebug() << "device: " << device.deviceName();
+	}
+
+	m_audioInput = new QAudioInput(preferred, this);
 	m_audioInput->setNotifyInterval(NotifyIntervalMs);
 	m_audioDevice = m_audioInput->start();
 	connect(m_audioDevice, SIGNAL(readyRead()), this, SLOT(audioData()));
@@ -113,8 +121,8 @@ void MainWindow::audioData() {
 void MainWindow::audioInterval() {
 //	qDebug() << "interval";
 	const int16_t* data = (const int16_t*)m_buffer.data();
-	int pos = m_bufferPos;
-	int size = m_buffer.size() / 2; // samples are 16-bit Doh!
+	int pos = m_bufferPos / 2; // samples are 16-bit Doh!
+	int size = m_buffer.size() / 2; // same here!
 
 	for (int i = 0; i < size; i++) {
 		if (pos >= size) {
