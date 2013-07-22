@@ -18,6 +18,10 @@ const uint8_t pal[9][3] =
 {255, 255, 0},
 {255, 51, 0}};
 
+int s12[40];
+int s22[40];
+int c12[40];
+int c22[40];
 
 MainWindow::MainWindow(QWidget *parent) :
 	QMainWindow(parent),
@@ -59,7 +63,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_buffer.clear();
 	m_bufferPos = 0;
 
-	const qint64 bufferLength = format.sampleRate(); // 1s of audio buffer
+	const qint64 bufferLength = 2*format.sampleRate(); // 1s of audio buffer
 	m_buffer.resize(bufferLength);
 	m_buffer.fill(0);
 
@@ -76,6 +80,14 @@ MainWindow::MainWindow(QWidget *parent) :
 				m_magRgb[i + 32*n] = qRgb(r, g, b);
 			 }
 	 }
+
+	m_lastPos = 0;
+	for (int i = 0; i < 40; i++) {
+		s12[i] = 128 * sin(2*M_PI*1200*i/48000);
+		c12[i] = 128 * cos(2*M_PI*1200*i/48000);
+		s22[i] = 128 * sin(2*M_PI*2200*i/48000);
+		c22[i] = 128 * cos(2*M_PI*2200*i/48000);
+	}
 }
 
 MainWindow::~MainWindow()
@@ -137,37 +149,71 @@ void MainWindow::audioInterval() {
 	int w = m_waterfallImage->width();
 	int h = m_waterfallImage->height();
 
-	for (int y = 0; y < h - 1; y++) {
+	for (int y = 10; y < h - 1; y++) {
 		for (int x = 0; x < w; x++) {
 			pixels[(y * w) + x] = pixels[((y + 1) * w) + x];
 		}
 	}
+
+	for (int y = 0; y < 10; y++) {
+		for (int f = 0; f < 3000; f++) {
+			if (f % 100 == 0) {
+				pixels[(y * w) + f/2] = 0xffffffff;
+			}
+		}
+	}
+
 	double mag;
 	int pixel;
-	for (int x = 2; x < w; x++) {
-		mag = sqrt(m_fft_out[x][0]*m_fft_out[x][0] + m_fft_out[x][1] * m_fft_out[x][1]) / 48000.0;
-		pixel = (int)(100*log10(mag));
+	for (int x = 0; x < w; x++) {
+		mag = sqrt(m_fft_out[x*2][0]*m_fft_out[x*2][0] + m_fft_out[x*2][1] * m_fft_out[x*2][1]) / 24000.0 / 256.0;
+		pixel = (int)(400*log10(mag));
 		if (pixel > 255) pixel = 255;
 		if (pixel < 0) pixel = 0;
 		pixels[((h - 1) * w) + x] = 0xff000000 | m_magRgb[pixel];
 	}
 
-/*	QRgb* pixels = (QRgb*)m_waterfallImage->bits();
-	int w = m_waterfallImage->width();
-	int h = m_waterfallImage->height();
-
-	for (int x = 0; x < w; x++) {
-		for (int y = 0; y < h; y++) {
-			pixels[((y) * w) + x] = 0xff000000;
-		}
-		if (pos >= size) {
-			pos -= size;
-		}
-		int y = data[pos++] / 32768.0 * 100 + 100;
-		if (y < 0) y = 0;
-		if (y > 199) y = 199;
-		pixels[(y * w) + x] = 0xffffffff;
-	}*/
-
 	m_waterfallPixmapItem->setPixmap(QPixmap::fromImage(*m_waterfallImage));
+
+	int count = pos - m_lastPos;
+	if (count < 0) count += size;
+
+	QString output = "";
+
+	int csum12;
+	int ssum12;
+	int csum22;
+	int ssum22;
+	for (int n = 0; n < count; n++) {
+		csum12 = 0;
+		ssum12 = 0;
+		csum22 = 0;
+		ssum22 = 0;
+		for (int i = 0; i < 40; i++) {
+			int snum = pos - 39 + i;
+			if (snum < 0) snum += size; // last 40 samples
+			if (snum >= size) snum -= size;
+			csum12 += data[snum] * c12[i];
+			ssum12 += data[snum] * s12[i];
+			csum22 += data[snum] * c22[i];
+			ssum22 += data[snum] * s22[i];
+		}
+		csum12 /= 256;
+		ssum12 /= 256;
+		csum22 /= 256;
+		ssum22 /= 256;
+
+		double result = csum12 * csum12 + ssum12 * ssum12 - csum22 * csum22 - ssum22 * ssum22;
+		if (abs(result) > 100) {
+			if (result > 0) {
+				output += '0';
+			} else {
+				output += '1';
+			}
+		}
+\
+		pos++;
+	}
+	if (output.length() > 0) qDebug() << output;
+	m_lastPos = pos;
 }
