@@ -18,11 +18,6 @@ const uint8_t pal[9][3] =
 {255, 255, 0},
 {255, 51, 0}};
 
-int s12[40];
-int s22[40];
-int c12[40];
-int c22[40];
-
 MainWindow::MainWindow(QWidget *parent) :
 	QMainWindow(parent),
 	ui(new Ui::MainWindow)
@@ -73,21 +68,13 @@ MainWindow::MainWindow(QWidget *parent) :
 
 	int r,g,b;
 	for (int n = 0; n < 8; n++) {
-			 for (int i = 0; i < 32; i++) {
-				r = pal[n][0] + (int)(1.0 * i * (pal[n+1][0] - pal[n][0]) / 32.0);
-				g = pal[n][1] + (int)(1.0 * i * (pal[n+1][1] - pal[n][1]) / 32.0);
-				b = pal[n][2] + (int)(1.0 * i * (pal[n+1][2] - pal[n][2]) / 32.0);
-				m_magRgb[i + 32*n] = qRgb(r, g, b);
-			 }
+		 for (int i = 0; i < 32; i++) {
+			r = pal[n][0] + (int)(1.0 * i * (pal[n+1][0] - pal[n][0]) / 32.0);
+			g = pal[n][1] + (int)(1.0 * i * (pal[n+1][1] - pal[n][1]) / 32.0);
+			b = pal[n][2] + (int)(1.0 * i * (pal[n+1][2] - pal[n][2]) / 32.0);
+			m_magRgb[i + 32*n] = qRgb(r, g, b);
+		 }
 	 }
-
-	m_lastPos = 0;
-	for (int i = 0; i < 40; i++) {
-		s12[i] = 128 * sin(2*M_PI*1200*i/48000);
-		c12[i] = 128 * cos(2*M_PI*1200*i/48000);
-		s22[i] = 128 * sin(2*M_PI*2200*i/48000);
-		c22[i] = 128 * cos(2*M_PI*2200*i/48000);
-	}
 }
 
 MainWindow::~MainWindow()
@@ -174,46 +161,4 @@ void MainWindow::audioInterval() {
 	}
 
 	m_waterfallPixmapItem->setPixmap(QPixmap::fromImage(*m_waterfallImage));
-
-	int count = pos - m_lastPos;
-	if (count < 0) count += size;
-
-	QString output = "";
-
-	int csum12;
-	int ssum12;
-	int csum22;
-	int ssum22;
-	for (int n = 0; n < count; n++) {
-		csum12 = 0;
-		ssum12 = 0;
-		csum22 = 0;
-		ssum22 = 0;
-		for (int i = 0; i < 40; i++) {
-			int snum = pos - 39 + i;
-			if (snum < 0) snum += size; // last 40 samples
-			if (snum >= size) snum -= size;
-			csum12 += data[snum] * c12[i];
-			ssum12 += data[snum] * s12[i];
-			csum22 += data[snum] * c22[i];
-			ssum22 += data[snum] * s22[i];
-		}
-		csum12 /= 256;
-		ssum12 /= 256;
-		csum22 /= 256;
-		ssum22 /= 256;
-
-		double result = csum12 * csum12 + ssum12 * ssum12 - csum22 * csum22 - ssum22 * ssum22;
-		if (abs(result) > 100) {
-			if (result > 0) {
-				output += '0';
-			} else {
-				output += '1';
-			}
-		}
-\
-		pos++;
-	}
-	if (output.length() > 0) qDebug() << output;
-	m_lastPos = pos;
 }

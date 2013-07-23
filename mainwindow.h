@@ -30,7 +30,6 @@ private:
 	QIODevice *m_audioDevice;
 	QByteArray m_buffer;
 	qint64 m_bufferPos;
-	int m_lastPos;
 	double *m_fft_in;
 	fftw_complex *m_fft_out;
 	fftw_plan m_fft_plan;

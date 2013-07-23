@@ -13,9 +13,11 @@ TEMPLATE = app
 
 
 SOURCES += main.cpp\
-        mainwindow.cpp
+        mainwindow.cpp \
+    aprsdecoder.cpp
 
-HEADERS  += mainwindow.h
+HEADERS  += mainwindow.h \
+    aprsdecoder.h
 
 FORMS    += mainwindow.ui
 
