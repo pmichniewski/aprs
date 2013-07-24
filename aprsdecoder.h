@@ -2,8 +2,10 @@
 #define APRSDECODER_H
 
 #include <stdint.h>
+#include <QString>
+#include <QFile>
 
-const int corrTaps = 8;
+const int sinTaps = 8;
 const int filterTaps = 11;
 const int decodeRate = 9600;
 const int bps = 1200;
@@ -28,7 +30,7 @@ fixed point precision: 16 bits
   actual attenuation = n/a
 
 */
-const int16_t filter = {
+const int16_t filter[] = {
   -1395,
   -2406,
   437,
@@ -46,19 +48,24 @@ class aprsDecoder
 {
 public:
 	aprsDecoder(int sampleRate);
+	~aprsDecoder();
 	void feedData(int16_t *data, int count);
 
 protected:
 	int m_sampleRate;
-	int m_s12[corrTaps];
-	int m_s22[corrTaps];
-	int m_c12[corrTaps];
-	int m_c22[corrTaps];
+	int *m_s12;
+	int *m_s22;
+	int *m_c12;
+	int *m_c22;
 	int16_t *m_sampleBuf;
-	int m_sampleCount;
-	int16_t *m_resampBuf;
-	int m_resampCount;
+	int m_samplePos;
+	int m_decimSkip; // number of samples to skip while decimating next buffer
 	int16_t *m_corrBuf;
+	int m_corrPos;
+	int m_time;
+	int m_lastDiff;
+	QString m_data;
+	QFile *f;
 };
 
 #endif // APRSDECODER_H

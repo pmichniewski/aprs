@@ -7,6 +7,7 @@
 #include <QAudioInput>
 #include <fftw3.h>
 #include <stdint.h>
+#include "aprsdecoder.h"
 
 namespace Ui {
 class MainWindow;
@@ -19,6 +20,7 @@ class MainWindow : public QMainWindow
 public:
 	explicit MainWindow(QWidget *parent = 0);
 	~MainWindow();
+	void drawSample(int sample);
 	
 private:
 	Ui::MainWindow *ui;
@@ -34,6 +36,7 @@ private:
 	fftw_complex *m_fft_out;
 	fftw_plan m_fft_plan;
 	QRgb m_magRgb[256];
+	aprsDecoder *m_decoder;
 
 public slots:
 	void updatePixmap();

@@ -52,7 +52,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_audioInput->setNotifyInterval(NotifyIntervalMs);
 	m_audioDevice = m_audioInput->start();
 	connect(m_audioDevice, SIGNAL(readyRead()), this, SLOT(audioData()));
-	connect(m_audioInput, SIGNAL(notify()), this, SLOT(audioInterval()));
+//	connect(m_audioInput, SIGNAL(notify()), this, SLOT(audioInterval()));
 	m_audioInput->resume();
 
 	m_buffer.clear();
@@ -75,6 +75,8 @@ MainWindow::MainWindow(QWidget *parent) :
 			m_magRgb[i + 32*n] = qRgb(r, g, b);
 		 }
 	 }
+
+	m_decoder = new aprsDecoder(preferred.sampleRate());
 }
 
 MainWindow::~MainWindow()
@@ -114,6 +116,9 @@ void MainWindow::audioData() {
 	const qint64 bytesToRead = qMin(bytesReady, bytesSpace);
 
 	const qint64 bytesRead = m_audioDevice->read(m_buffer.data() + m_bufferPos, bytesToRead);
+	if (bytesRead > 0) {
+		m_decoder->feedData((int16_t*)(m_buffer.data() + m_bufferPos), (int)(bytesRead / 2));
+	}
 	m_bufferPos += bytesRead;
 }
 
@@ -160,5 +165,20 @@ void MainWindow::audioInterval() {
 		pixels[((h - 1) * w) + x] = 0xff000000 | m_magRgb[pixel];
 	}
 
+	m_waterfallPixmapItem->setPixmap(QPixmap::fromImage(*m_waterfallImage));
+}
+
+void MainWindow::drawSample(int sample) {
+	QRgb* pixels = (QRgb*)m_waterfallImage->bits();
+	int w = m_waterfallImage->width();
+	int h = m_waterfallImage->height();
+
+	for (int x = 0; x < 200; x++) {
+		for (int y = 0; y < h; y++) {
+			pixels[(y * w) + 198] = pixels[(y * w) + 199];
+		}
+	}
+
+	pixels[((sample / 330 + 100) * w) + 199] = 0xffffffff;
 	m_waterfallPixmapItem->setPixmap(QPixmap::fromImage(*m_waterfallImage));
 }

@@ -1,24 +1,147 @@
 #include "aprsdecoder.h"
 #include <math.h>
+#include <QDebug>
+#include "mainwindow.h"
 
 aprsDecoder::aprsDecoder(int sampleRate) {
-	m_resampBuf = new int16_t[sampleRate / decodeRate]; // buffer for holding samples left from previous resampling
-	m_sampleBuf = new int16_t[corrTaps]; // buffer for holding samples for sine convolution
+	m_sampleBuf = new int16_t[sinTaps]; // buffer for holding samples for sine convolution
 	m_corrBuf = new int16_t[filterTaps]; // buffer for holding samples for lowpass filter convolution
 
-	for (int i = 0; i < 40; i++) {
-		m_s12[i] = 128 * sin(2*M_PI*1200*i/48000);
-		m_c12[i] = 128 * cos(2*M_PI*1200*i/48000);
-		m_s22[i] = 128 * sin(2*M_PI*2200*i/48000);
-		m_c22[i] = 128 * cos(2*M_PI*2200*i/48000);
+	for (int i = 0; i < sinTaps; i++) {
+		m_sampleBuf[i] = 0;
 	}
+	m_samplePos = 0;
+
+	for (int i = 0; i < filterTaps; i++) {
+		m_corrBuf[i] = 0;
+	}
+	m_corrPos = 0;
+
+	m_decimSkip = 0;
+	m_sampleRate = sampleRate;
+	m_s12 = new int[sinTaps];
+	m_c12 = new int[sinTaps];
+	m_s22 = new int[sinTaps];
+	m_c22 = new int[sinTaps];
+
+	for (int i = 0; i < sinTaps; i++) {
+		m_s12[i] = 128 * sin(2*M_PI*1200*(sinTaps - i - 1)/decodeRate); // flipped impulse response
+		m_c12[i] = 128 * cos(2*M_PI*1200*(sinTaps - i - 1)/decodeRate);
+		m_s22[i] = 128 * sin(2*M_PI*2200*(sinTaps - i - 1)/decodeRate);
+		m_c22[i] = 128 * cos(2*M_PI*2200*(sinTaps - i - 1)/decodeRate);
+	}
+
+	m_time = 0;
+	m_lastDiff = 0;
+	m_data.clear();
+	f = new QFile("/prj/output.csv");
+	f->open(QIODevice::WriteOnly | QIODevice::Text);
+}
+
+aprsDecoder::~aprsDecoder() {
+	delete m_s12;
+	delete m_c12;
+	delete m_s22;
+	delete m_c22;
+	f->close();
+	delete f;
 }
 
 void aprsDecoder::feedData(int16_t *data, int count) {
+	bool m_hasData = false;
+	for (int i = 0; i < count; i++) {
+		if (data[i] != 0) {
+			m_hasData = true;
+		}
+	}
+
+	if (!m_hasData) {
+		return;
+	}
+
 	int csum12;
 	int ssum12;
 	int csum22;
 	int ssum22;
+	int filteredDiff;
+
+	int decimRate = m_sampleRate / decodeRate;
+
+	int numDecimated = (count - m_decimSkip)/decimRate;
+	if ((count - m_decimSkip)%decimRate > 0) {
+		numDecimated++;
+	}
+	QTextStream out(f);
+
+	for (int i = 0; i < numDecimated; i++) {
+		m_sampleBuf[m_samplePos++] = data[m_decimSkip + i*decimRate];
+		if (m_samplePos >= sinTaps)
+			m_samplePos = 0;
+		csum12 = 0;
+		ssum12 = 0;
+		csum22 = 0;
+		ssum22 = 0;
+		for (int j = 0; j < sinTaps; j++) {
+			int snum = m_samplePos + j;
+			if (snum >= sinTaps) snum = 0;
+			csum12 += m_sampleBuf[snum] * m_c12[j];
+			ssum12 += m_sampleBuf[snum] * m_s12[j];
+			csum22 += m_sampleBuf[snum] * m_c22[j];
+			ssum22 += m_sampleBuf[snum] * m_s22[j];
+		}
+		csum12 /= 1024;
+		ssum12 /= 1024;
+		csum22 /= 1024;
+		ssum22 /= 1024;
+		int diff = (csum12 * csum12 + ssum12 * ssum12 - csum22 * csum22 - ssum22 * ssum22) / 4096;
+		out << data[m_decimSkip + i*decimRate] << ", " << sqrt(csum12 * csum12 + ssum12 * ssum12) << ", " << sqrt(csum22 * csum22 + ssum22 * ssum22) << "\n";;
+		m_corrBuf[m_corrPos++] = diff;
+		if (m_corrPos >= filterTaps)
+			m_corrPos = 0;
+
+		filteredDiff = 0;
+
+		for (int j = 0; j < filterTaps; j++) {
+			int snum = m_corrPos + j;
+			if (snum >= filterTaps) snum = 0;
+			filteredDiff = filteredDiff + m_corrBuf[snum] * filter[j];
+		}
+		filteredDiff >>= 16;
+
+		if ((filteredDiff > 0 && m_lastDiff < 0) ||
+				(filteredDiff < 0 && m_lastDiff > 0) ||
+				(filteredDiff == 0)) {
+			if (m_time < 4 || m_time > 60) { // error
+				m_data.clear();
+			} else {
+				if (m_time < 13) { // received "0"
+					m_data.append("0");
+				} else if (m_time < 21) { // received "10"
+					m_data.append("10");
+				} else if (m_time < 29) { // received "110"
+					m_data.append("110");
+				} else if (m_time < 37) { // received "1110"
+					m_data.append("1110");
+				} else if (m_time < 45) { // received "11110"
+					m_data.append("11110");
+				} else if (m_time < 53) { // received "11111"
+					m_data.append("11111");
+				} else {
+					qDebug() << m_data;
+					m_data.clear();
+				}
+			}
+			m_time = 0;
+		}
+//		qDebug() << filteredDiff;
+
+		m_lastDiff = filteredDiff;
+		m_time++;
+	}
+
+	m_decimSkip = (5 - count % 5 + m_decimSkip) % 5;
+
+//	m_decimCount = decimRate - ((count+m_decimCount) % decimRate);
 
 //	for (int n = 0; n < count; n++) {
 //		csum12 = 0;
