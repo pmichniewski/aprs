@@ -52,7 +52,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	m_audioInput->setNotifyInterval(NotifyIntervalMs);
 	m_audioDevice = m_audioInput->start();
 	connect(m_audioDevice, SIGNAL(readyRead()), this, SLOT(audioData()));
-//	connect(m_audioInput, SIGNAL(notify()), this, SLOT(audioInterval()));
+	connect(m_audioInput, SIGNAL(notify()), this, SLOT(audioInterval()));
 	m_audioInput->resume();
 
 	m_buffer.clear();

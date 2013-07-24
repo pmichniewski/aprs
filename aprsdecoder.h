@@ -30,18 +30,18 @@ fixed point precision: 16 bits
   actual attenuation = n/a
 
 */
-const int16_t filter[] = {
-  -1395,
-  -2406,
-  437,
-  9210,
-  19992,
-  24946,
-  19992,
-  9210,
-  437,
-  -2406,
-  -1395
+const double filter[] = {
+-0.02129290352029659,
+-0.03671659908131041,
+0.006661063138798663,
+0.1405373281860916,
+0.30506115855474275,
+0.3806400324285967,
+0.30506115855474275,
+0.1405373281860916,
+0.006661063138798663,
+-0.03671659908131041,
+-0.02129290352029659
 };
 
 class aprsDecoder
@@ -53,14 +53,14 @@ public:
 
 protected:
 	int m_sampleRate;
-	int *m_s12;
-	int *m_s22;
-	int *m_c12;
-	int *m_c22;
+	double *m_s12;
+	double *m_s22;
+	double *m_c12;
+	double *m_c22;
 	int16_t *m_sampleBuf;
 	int m_samplePos;
 	int m_decimSkip; // number of samples to skip while decimating next buffer
-	int16_t *m_corrBuf;
+	double *m_corrBuf;
 	int m_corrPos;
 	int m_time;
 	int m_lastDiff;

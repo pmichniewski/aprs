@@ -5,7 +5,7 @@
 
 aprsDecoder::aprsDecoder(int sampleRate) {
 	m_sampleBuf = new int16_t[sinTaps]; // buffer for holding samples for sine convolution
-	m_corrBuf = new int16_t[filterTaps]; // buffer for holding samples for lowpass filter convolution
+	m_corrBuf = new double[filterTaps]; // buffer for holding samples for lowpass filter convolution
 
 	for (int i = 0; i < sinTaps; i++) {
 		m_sampleBuf[i] = 0;
@@ -19,23 +19,23 @@ aprsDecoder::aprsDecoder(int sampleRate) {
 
 	m_decimSkip = 0;
 	m_sampleRate = sampleRate;
-	m_s12 = new int[sinTaps];
-	m_c12 = new int[sinTaps];
-	m_s22 = new int[sinTaps];
-	m_c22 = new int[sinTaps];
+	m_s12 = new double[sinTaps];
+	m_c12 = new double[sinTaps];
+	m_s22 = new double[sinTaps];
+	m_c22 = new double[sinTaps];
 
+	f = new QFile("/home/cobra/Projekty/aprs/output.csv");
+	f->open(QIODevice::WriteOnly | QIODevice::Text);
 	for (int i = 0; i < sinTaps; i++) {
-		m_s12[i] = 128 * sin(2*M_PI*1200*(sinTaps - i - 1)/decodeRate); // flipped impulse response
-		m_c12[i] = 128 * cos(2*M_PI*1200*(sinTaps - i - 1)/decodeRate);
-		m_s22[i] = 128 * sin(2*M_PI*2200*(sinTaps - i - 1)/decodeRate);
-		m_c22[i] = 128 * cos(2*M_PI*2200*(sinTaps - i - 1)/decodeRate);
+		m_s12[i] = sin(2*M_PI*1200*i/decodeRate); // flipped impulse response
+		m_c12[i] = cos(2*M_PI*1200*i/decodeRate);
+		m_s22[i] = sin(2*M_PI*2200*i/decodeRate);
+		m_c22[i] = cos(2*M_PI*2200*i/decodeRate);
 	}
 
 	m_time = 0;
 	m_lastDiff = 0;
 	m_data.clear();
-	f = new QFile("/prj/output.csv");
-	f->open(QIODevice::WriteOnly | QIODevice::Text);
 }
 
 aprsDecoder::~aprsDecoder() {
@@ -59,11 +59,11 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 		return;
 	}
 
-	int csum12;
-	int ssum12;
-	int csum22;
-	int ssum22;
-	int filteredDiff;
+	double csum12;
+	double ssum12;
+	double csum22;
+	double ssum22;
+	double filteredDiff;
 
 	int decimRate = m_sampleRate / decodeRate;
 
@@ -72,6 +72,7 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 		numDecimated++;
 	}
 	QTextStream out(f);
+	double sampleVal = 0;
 
 	for (int i = 0; i < numDecimated; i++) {
 		m_sampleBuf[m_samplePos++] = data[m_decimSkip + i*decimRate];
@@ -84,17 +85,18 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 		for (int j = 0; j < sinTaps; j++) {
 			int snum = m_samplePos + j;
 			if (snum >= sinTaps) snum = 0;
-			csum12 += m_sampleBuf[snum] * m_c12[j];
-			ssum12 += m_sampleBuf[snum] * m_s12[j];
-			csum22 += m_sampleBuf[snum] * m_c22[j];
-			ssum22 += m_sampleBuf[snum] * m_s22[j];
+			sampleVal = (m_sampleBuf[snum]/32767.0);
+			csum12 += sampleVal * m_c12[j];
+			ssum12 += sampleVal * m_s12[j];
+			csum22 += sampleVal * m_c22[j];
+			ssum22 += sampleVal * m_s22[j];
 		}
-		csum12 /= 1024;
-		ssum12 /= 1024;
-		csum22 /= 1024;
-		ssum22 /= 1024;
-		int diff = (csum12 * csum12 + ssum12 * ssum12 - csum22 * csum22 - ssum22 * ssum22) / 4096;
-		out << data[m_decimSkip + i*decimRate] << ", " << sqrt(csum12 * csum12 + ssum12 * ssum12) << ", " << sqrt(csum22 * csum22 + ssum22 * ssum22) << "\n";;
+//		csum12 /= 128;
+//		ssum12 /= 128;
+//		csum22 /= 128;
+//		ssum22 /= 128;
+		double diff = sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22);
+		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22) << "\n";
 		m_corrBuf[m_corrPos++] = diff;
 		if (m_corrPos >= filterTaps)
 			m_corrPos = 0;
@@ -106,7 +108,6 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 			if (snum >= filterTaps) snum = 0;
 			filteredDiff = filteredDiff + m_corrBuf[snum] * filter[j];
 		}
-		filteredDiff >>= 16;
 
 		if ((filteredDiff > 0 && m_lastDiff < 0) ||
 				(filteredDiff < 0 && m_lastDiff > 0) ||
