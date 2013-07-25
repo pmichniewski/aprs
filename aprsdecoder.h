@@ -63,6 +63,7 @@ protected:
 	double *m_corrBuf;
 	int m_corrPos;
 	int m_time;
+	int m_lastTime;
 	double m_lastDiff;
 	QString m_data;
 	QFile *f;

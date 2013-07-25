@@ -34,6 +34,7 @@ aprsDecoder::aprsDecoder(int sampleRate) {
 	}
 
 	m_time = 0;
+	m_lastTime = 0;
 	m_lastDiff = 0;
 	m_data.clear();
 }
@@ -93,7 +94,7 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 //		ssum12 /= 128;
 //		csum22 /= 128;
 //		ssum22 /= 128;
-		double diff = sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22);
+		double diff = (csum12 * csum12 + ssum12 * ssum12) - (csum22 * csum22 + ssum22 * ssum22);
 //		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22) << "\n";
 		m_corrBuf[m_corrPos++] = diff;
 		if (m_corrPos >= filterTaps)
@@ -105,6 +106,7 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 			int snum = (m_corrPos + j) % filterTaps;
 			filteredDiff = filteredDiff + m_corrBuf[snum] * filter[j];
 		}
+		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << filteredDiff << "\n";
 
 		if ((filteredDiff > 0 && m_lastDiff < 0) ||
 				(filteredDiff < 0 && m_lastDiff > 0) ||
@@ -113,7 +115,13 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 				m_data.clear();
 			} else {
 				if (m_time < 13) { // received "0"
-					m_data.append("0");
+					if (m_lastTime > 52 && m_lastTime < 61) { // FLAG received
+						if (m_data.length() > 0)
+							qDebug() << m_data;
+						m_data.clear();
+					} else {
+						m_data.append("0");
+					}
 				} else if (m_time < 21) { // received "10"
 					m_data.append("10");
 				} else if (m_time < 29) { // received "110"
@@ -124,53 +132,15 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 					m_data.append("11110");
 				} else if (m_time < 53) { // received "11111"
 					m_data.append("11111");
-				} else {
-					qDebug() << m_data;
-					m_data.clear();
 				}
 			}
+			m_lastTime = m_time;
 			m_time = 0;
 		}
-//		qDebug() << filteredDiff;
 
 		m_lastDiff = filteredDiff;
 		m_time++;
 	}
 
 	m_decimSkip = (5 - count % 5 + m_decimSkip) % 5;
-
-//	m_decimCount = decimRate - ((count+m_decimCount) % decimRate);
-
-//	for (int n = 0; n < count; n++) {
-//		csum12 = 0;
-//		ssum12 = 0;
-//		csum22 = 0;
-//		ssum22 = 0;
-//		for (int i = 0; i < 40; i++) {
-//			int snum = pos - 39 + i;
-//			if (snum < 0) snum += size; // last 40 samples
-//			if (snum >= size) snum -= size;
-//			csum12 += data[snum] * c12[i];
-//			ssum12 += data[snum] * s12[i];
-//			csum22 += data[snum] * c22[i];
-//			ssum22 += data[snum] * s22[i];
-//		}
-//		csum12 /= 256;
-//		ssum12 /= 256;
-//		csum22 /= 256;
-//		ssum22 /= 256;
-
-//		double result = csum12 * csum12 + ssum12 * ssum12 - csum22 * csum22 - ssum22 * ssum22;
-//		if (abs(result) > 100) {
-//			if (result > 0) {
-//				output += '0';
-//			} else {
-//				output += '1';
-//			}
-//		}
-//
-//		pos++;
-//	}
-//	if (output.length() > 0) qDebug() << output;
-
 }
