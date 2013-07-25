@@ -24,13 +24,13 @@ aprsDecoder::aprsDecoder(int sampleRate) {
 	m_s22 = new double[sinTaps];
 	m_c22 = new double[sinTaps];
 
-	f = new QFile("/home/cobra/Projekty/aprs/output.csv");
+	f = new QFile("output.csv");
 	f->open(QIODevice::WriteOnly | QIODevice::Text);
 	for (int i = 0; i < sinTaps; i++) {
-		m_s12[i] = sin(2*M_PI*1200*i/decodeRate); // flipped impulse response
-		m_c12[i] = cos(2*M_PI*1200*i/decodeRate);
-		m_s22[i] = sin(2*M_PI*2200*i/decodeRate);
-		m_c22[i] = cos(2*M_PI*2200*i/decodeRate);
+		m_s12[sinTaps - i - 1] = sin(2*M_PI*1200*i/decodeRate); // flipped impulse response
+		m_c12[sinTaps - i - 1] = cos(2*M_PI*1200*i/decodeRate);
+		m_s22[sinTaps - i - 1] = sin(2*M_PI*2200*i/decodeRate);
+		m_c22[sinTaps - i - 1] = cos(2*M_PI*2200*i/decodeRate);
 	}
 
 	m_time = 0;
@@ -76,15 +76,13 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 
 	for (int i = 0; i < numDecimated; i++) {
 		m_sampleBuf[m_samplePos++] = data[m_decimSkip + i*decimRate];
-		if (m_samplePos >= sinTaps)
-			m_samplePos = 0;
+		m_samplePos %= sinTaps;
 		csum12 = 0;
 		ssum12 = 0;
 		csum22 = 0;
 		ssum22 = 0;
 		for (int j = 0; j < sinTaps; j++) {
-			int snum = m_samplePos + j;
-			if (snum >= sinTaps) snum = 0;
+			int snum = (m_samplePos + j)%sinTaps; //m_samplePos + j;
 			sampleVal = (m_sampleBuf[snum]/32767.0);
 			csum12 += sampleVal * m_c12[j];
 			ssum12 += sampleVal * m_s12[j];
@@ -96,7 +94,7 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 //		csum22 /= 128;
 //		ssum22 /= 128;
 		double diff = sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22);
-		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22) << "\n";
+//		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22) << "\n";
 		m_corrBuf[m_corrPos++] = diff;
 		if (m_corrPos >= filterTaps)
 			m_corrPos = 0;
@@ -104,8 +102,7 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 		filteredDiff = 0;
 
 		for (int j = 0; j < filterTaps; j++) {
-			int snum = m_corrPos + j;
-			if (snum >= filterTaps) snum = 0;
+			int snum = (m_corrPos + j) % filterTaps;
 			filteredDiff = filteredDiff + m_corrBuf[snum] * filter[j];
 		}
 
