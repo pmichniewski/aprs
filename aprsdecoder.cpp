@@ -33,10 +33,15 @@ aprsDecoder::aprsDecoder(int sampleRate) {
 		m_c22[sinTaps - i - 1] = cos(2*M_PI*2200*i/decodeRate);
 	}
 
+	m_data = new uint8_t[buffer_size];
+	m_dataLength = 0;
+
 	m_time = 0;
 	m_lastTime = 0;
 	m_lastDiff = 0;
-	m_data.clear();
+
+	m_currentState = ERROR;
+	m_nextState = ERROR;
 }
 
 aprsDecoder::~aprsDecoder() {
@@ -68,16 +73,20 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 
 	int decimRate = m_sampleRate / decodeRate;
 
-	int numDecimated = (count - m_decimSkip)/decimRate;
+	int numDecimated = (count - m_decimSkip)/decimRate; // number of decimated samples
 	if ((count - m_decimSkip)%decimRate > 0) {
 		numDecimated++;
 	}
-	QTextStream out(f);
-	double sampleVal = 0;
 
+//	QTextStream out(f);
+
+	double sampleVal = 0;
 	for (int i = 0; i < numDecimated; i++) {
+		// decimation
 		m_sampleBuf[m_samplePos++] = data[m_decimSkip + i*decimRate];
 		m_samplePos %= sinTaps;
+
+		// correlation
 		csum12 = 0;
 		ssum12 = 0;
 		csum22 = 0;
@@ -90,57 +99,81 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 			csum22 += sampleVal * m_c22[j];
 			ssum22 += sampleVal * m_s22[j];
 		}
-//		csum12 /= 128;
-//		ssum12 /= 128;
-//		csum22 /= 128;
-//		ssum22 /= 128;
+
+		//correlation difference
 		double diff = (csum12 * csum12 + ssum12 * ssum12) - (csum22 * csum22 + ssum22 * ssum22);
 //		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << sqrt(csum12 * csum12 + ssum12 * ssum12) - sqrt(csum22 * csum22 + ssum22 * ssum22) << "\n";
 		m_corrBuf[m_corrPos++] = diff;
 		if (m_corrPos >= filterTaps)
 			m_corrPos = 0;
 
+		// low-pass filtering of correlation difference
 		filteredDiff = 0;
-
 		for (int j = 0; j < filterTaps; j++) {
 			int snum = (m_corrPos + j) % filterTaps;
 			filteredDiff = filteredDiff + m_corrBuf[snum] * filter[j];
 		}
-		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << filteredDiff << "\n";
+//		out << (data[m_decimSkip + i*decimRate]/32767.0) << ", " << filteredDiff << "\n";
 
-		if ((filteredDiff > 0 && m_lastDiff < 0) ||
+		// decoding
+		if ((filteredDiff > 0 && m_lastDiff < 0) || // zero-crossing detected
 				(filteredDiff < 0 && m_lastDiff > 0) ||
 				(filteredDiff == 0)) {
-			if (m_time < 4 || m_time > 60) { // error
-				m_data.clear();
-			} else {
-				if (m_time < 13) { // received "0"
-					if (m_lastTime > 52 && m_lastTime < 61) { // FLAG received
-						if (m_data.length() > 0)
-							qDebug() << m_data;
-						m_data.clear();
-					} else {
-						m_data.append("0");
+			if (m_time < 4 || m_time > 60) { // 0..3 or 61+ error detected
+				m_nextState = ERROR;
+			} else if (m_time > 52 && m_time < 61) { // 53..60 FLAG received
+				m_nextState = RECEIVING;
+				QString msg;
+				if (m_dataLength > 0) {
+					for (int i = 0; i < m_dataLength/8; i++) {
+						msg+= QString::number(m_data[i], 16) + " ";
 					}
-				} else if (m_time < 21) { // received "10"
-					m_data.append("10");
-				} else if (m_time < 29) { // received "110"
-					m_data.append("110");
-				} else if (m_time < 37) { // received "1110"
-					m_data.append("1110");
-				} else if (m_time < 45) { // received "11110"
-					m_data.append("11110");
-				} else if (m_time < 53) { // received "11111"
-					m_data.append("11111");
+					qDebug() << msg;
+				}
+				memset(m_data, 0, buffer_size);
+				m_dataLength = 0;
+			} else {
+				switch (m_currentState) {
+				case ERROR:
+					m_nextState = ERROR;
+					break;
+				case RECEIVING:
+					if (m_time < 13) { // 5..12 received "0"
+						addBits(0x00, 1);
+					} else if (m_time < 21) { // 13..20 received "10"
+						addBits(0x02, 2);
+					} else if (m_time < 29) { // 21..28 received "110"
+						addBits(0x06, 3);
+					} else if (m_time < 37) { // 29..36 received "1110"
+						addBits(0x0e, 4);
+					} else if (m_time < 45) { // 37..44 received "11110"
+						addBits(0x1e, 5);
+					} else if (m_time < 53) { // 45.. 52 received "11111"
+						addBits(0x1f, 5);
+					}
+					break;
 				}
 			}
+
 			m_lastTime = m_time;
 			m_time = 0;
 		}
 
+		m_currentState = m_nextState;
 		m_lastDiff = filteredDiff;
 		m_time++;
 	}
 
-	m_decimSkip = (5 - count % 5 + m_decimSkip) % 5;
+	m_decimSkip = (5 - count % 5 + m_decimSkip) % 5; // how many samples to skip from the next buffer
+}
+
+void aprsDecoder::addBits(uint8_t bits, int count) {
+	for (int i = 0; i < count; i++) {
+		m_data[(m_dataLength + i) / 8] |= ((bits >> (count - i - 1)) & 1) << ((m_dataLength + i)%8);
+	}
+	m_dataLength += count;
+}
+
+void aprsDecoder::parsePacket() {
+
 }

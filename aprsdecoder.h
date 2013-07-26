@@ -9,6 +9,11 @@ const int sinTaps = 8;
 const int filterTaps = 11;
 const int decodeRate = 9600;
 const int bps = 1200;
+const int buffer_size = 1024;
+
+typedef enum {
+	ERROR, RECEIVING
+} aprsState;
 
 /*
 
@@ -52,6 +57,9 @@ public:
 	void feedData(int16_t *data, int count);
 
 protected:
+	void parsePacket();
+	void addBits(uint8_t bits, int count);
+
 	int m_sampleRate;
 	double *m_s12;
 	double *m_s22;
@@ -65,7 +73,10 @@ protected:
 	int m_time;
 	int m_lastTime;
 	double m_lastDiff;
-	QString m_data;
+	uint8_t *m_data;
+	int m_dataLength;
+	aprsState m_currentState;
+	aprsState m_nextState;
 	QFile *f;
 };
 
