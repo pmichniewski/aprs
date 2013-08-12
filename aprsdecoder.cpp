@@ -122,13 +122,17 @@ void aprsDecoder::feedData(int16_t *data, int count) {
 			if (m_time < 4 || m_time > 60) { // 0..3 or 61+ error detected
 				m_nextState = ERROR;
 			} else if (m_time > 52 && m_time < 61) { // 53..60 FLAG received
+				if (m_dataLength > 0) { // remove last bit from start of FLAG byte
+					m_dataLength--;
+				}
 				m_nextState = RECEIVING;
 				QString msg;
-				if (m_dataLength > 0) {
+				if (m_dataLength >= 24) { // at least 3 bytes (1 data + 2 CRC)
 					for (int i = 0; i < m_dataLength/8; i++) {
 						msg+= QString::number(m_data[i], 16) + " ";
 					}
-					qDebug() << msg;
+//					qDebug() << m_dataLength << ": " << msg;
+					parsePacket();
 				}
 				memset(m_data, 0, buffer_size);
 				m_dataLength = 0;
@@ -175,5 +179,66 @@ void aprsDecoder::addBits(uint8_t bits, int count) {
 }
 
 void aprsDecoder::parsePacket() {
+	uint16_t crc_result = 0xffff;
+	for (int i = 0; i < m_dataLength/8 - 2; i++) {
+		crc_result = crc_result >> 8 ^ crc_tab[(crc_result ^ m_data[i]) & 0xff];
+	}
+	crc_result = ~crc_result;
+	uint16_t packet_crc = (m_data[m_dataLength/8 - 2]) | (m_data[m_dataLength/8 - 1] << 8);
+	if (crc_result == packet_crc) {
+		char dest_call[7];
+		char src_call[7];
+		char repeater_call[7];
+		uint8_t dest_ssid;
+		uint8_t src_ssid;
+		uint8_t repeater_ssid;
+		bool last;
+		bool repeated;
+		QString msg;
 
+		decodeAddress(0, dest_call, dest_ssid, repeated);
+		QTextStream(&msg) << dest_call << "-" << dest_ssid;
+		if (repeated) {
+			QTextStream(&msg) << " repeated";
+		}
+		qDebug() << msg;
+
+		msg.clear();
+		last = decodeAddress(1, src_call, src_ssid, repeated);
+		QTextStream(&msg) << src_call << "-" << src_ssid;
+		if (repeated) {
+			QTextStream(&msg) << " repeated";
+		}
+		qDebug() << msg;
+
+		int repeater_num = 2;
+		while (!last) {
+			msg.clear();
+			last = decodeAddress(repeater_num++, repeater_call, repeater_ssid, repeated);
+			QTextStream(&msg) << repeater_call << "-" << repeater_ssid;
+			if (repeated) {
+				QTextStream(&msg) << " repeated";
+			}
+			qDebug() << msg;
+		}
+
+		qDebug() << " CRC OK";
+	} else {
+		qDebug() << " CRC NOT OK";
+	}
+}
+
+bool aprsDecoder::decodeAddress(int addrNum, char *callsign, uint8_t &ssid, bool &repeated) {
+	for (int i = 0; i < 6; i++) {
+		callsign[i] = m_data[addrNum * 7 + i] >> 1;
+		if (callsign[i] == 0x20) callsign[i] = 0;
+	}
+	callsign[6] = 0;
+	ssid = (m_data[addrNum * 7 + 6] & 0x1e) >> 1;
+	repeated = (m_data[addrNum * 7 + 6] & 0x80) == 0x80;
+	if ((m_data[addrNum * 7 + 6] & 0x01) == 0x01) {
+		return true;
+	} else {
+		return false;
+	}
 }
