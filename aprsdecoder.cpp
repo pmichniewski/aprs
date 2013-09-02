@@ -195,36 +195,37 @@ void aprsDecoder::parsePacket() {
 		bool last;
 		bool repeated;
 		QString msg;
+		QTextStream stream(&msg);
 
-		decodeAddress(0, dest_call, dest_ssid, repeated);
-		QTextStream(&msg) << dest_call << "-" << dest_ssid;
-		if (repeated) {
-			QTextStream(&msg) << " repeated";
-		}
-		qDebug() << msg;
-
-		msg.clear();
 		last = decodeAddress(1, src_call, src_ssid, repeated);
-		QTextStream(&msg) << src_call << "-" << src_ssid;
-		if (repeated) {
-			QTextStream(&msg) << " repeated";
-		}
-		qDebug() << msg;
+		stream << src_call;
+		if (src_ssid > 0)
+			stream << "-" << src_ssid;
+		if (repeated)
+			stream << "*";
+		stream << ">";
+
+		last = decodeAddress(0, dest_call, dest_ssid, repeated);
+		stream << dest_call;
+		if (dest_ssid > 0)
+			stream << "-" << dest_ssid;
+		if (repeated)
+			stream << "*";
+		if (!last)
+			stream << ",";
 
 		int repeater_num = 2;
 		while (!last) {
-			msg.clear();
 			last = decodeAddress(repeater_num++, repeater_call, repeater_ssid, repeated);
-			QTextStream(&msg) << repeater_call << "-" << repeater_ssid;
-			if (repeated) {
-				QTextStream(&msg) << " repeated";
-			}
-			qDebug() << msg;
+			stream << repeater_call;
+			if (dest_ssid > 0)
+				stream << "-" << repeater_ssid;
+			if (repeated)
+				stream << "*";
+			if (!last)
+				stream << ",";
 		}
-
-		qDebug() << " CRC OK";
-	} else {
-		qDebug() << " CRC NOT OK";
+		qDebug() << msg;
 	}
 }
 
